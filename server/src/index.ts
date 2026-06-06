@@ -1,3 +1,4 @@
+import 'dotenv/config';
 import express from 'express';
 import http from 'http';
 import path from 'path';
@@ -10,6 +11,7 @@ import {
   applyShapeDelete,
   applyClear,
 } from './rooms';
+import { migrate, loadRoom } from './db';
 
 const PORT = parseInt(process.env.PORT ?? '3001', 10);
 const STATIC_DIR = path.join(__dirname, '../../client/dist');
@@ -18,9 +20,7 @@ const app = express();
 const server = http.createServer(app);
 const wss = new WebSocketServer({ server });
 
-// Serve the React build
 app.use(express.static(STATIC_DIR));
-// SPA fallback — any unknown path serves index.html so React Router handles it
 app.get('/{*path}', (_req, res) => {
   res.sendFile(path.join(STATIC_DIR, 'index.html'));
 });
@@ -39,7 +39,7 @@ function broadcast(roomId: string, msg: ServerMsg, except?: WebSocket) {
 wss.on('connection', (ws) => {
   let currentRoomId: string | null = null;
 
-  ws.on('message', (data) => {
+  ws.on('message', async (data) => {
     let msg: ClientMsg;
     try {
       msg = JSON.parse(data.toString()) as ClientMsg;
@@ -48,7 +48,6 @@ wss.on('connection', (ws) => {
     }
 
     if (msg.type === 'join') {
-      // Leave previous room if any
       if (currentRoomId) {
         const prev = getOrCreateRoom(currentRoomId);
         prev.clients.delete(ws);
@@ -56,12 +55,22 @@ wss.on('connection', (ws) => {
       currentRoomId = msg.roomId;
       const room = getOrCreateRoom(currentRoomId);
       room.clients.add(ws);
-      // Send full board state to the newly joined client
+
+      // Hydrate from DB if this room is fresh in memory
+      if (room.shapes.length === 0) {
+        try {
+          const saved = await loadRoom(currentRoomId);
+          if (saved.length > 0) room.shapes = saved;
+        } catch (err) {
+          console.error('[db] loadRoom failed:', err);
+        }
+      }
+
       send(ws, { type: 'init', shapes: room.shapes });
       return;
     }
 
-    if (!currentRoomId) return; // must join first
+    if (!currentRoomId) return;
 
     switch (msg.type) {
       case 'shape_add':
@@ -85,12 +94,18 @@ wss.on('connection', (ws) => {
 
   ws.on('close', () => {
     if (currentRoomId) {
-      const room = getOrCreateRoom(currentRoomId);
-      room.clients.delete(ws);
+      getOrCreateRoom(currentRoomId).clients.delete(ws);
     }
   });
 });
 
-server.listen(PORT, () => {
-  console.log(`Whiteboard server listening on http://localhost:${PORT}`);
-});
+migrate()
+  .then(() => {
+    server.listen(PORT, () => {
+      console.log(`Whiteboard server listening on http://localhost:${PORT}`);
+    });
+  })
+  .catch(err => {
+    console.error('Migration failed — server will not start:', err);
+    process.exit(1);
+  });
