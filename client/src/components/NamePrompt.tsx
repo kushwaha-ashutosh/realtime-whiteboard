@@ -1,5 +1,13 @@
 import { useState } from 'react';
 
+const ADJS = ['swift','bright','calm','bold','kind','wise','warm','cool','brave','eager'];
+const NOUNS = ['fox','owl','star','wave','leaf','moon','spark','hawk','river','cloud'];
+
+export function randomName(): string {
+  return ADJS[Math.floor(Math.random() * ADJS.length)] + '-' +
+         NOUNS[Math.floor(Math.random() * NOUNS.length)];
+}
+
 interface Props {
   onConfirm: (name: string) => void;
 }
@@ -12,6 +20,8 @@ export default function NamePrompt({ onConfirm }: Props) {
     if (name.length === 0) return;
     onConfirm(name);
   };
+
+  const skip = () => onConfirm(randomName());
 
   return (
     <div style={{
@@ -29,14 +39,14 @@ export default function NamePrompt({ onConfirm }: Props) {
           Welcome to the whiteboard
         </div>
         <div style={{ color: '#9ca3af', fontSize: 14, fontFamily: 'sans-serif' }}>
-          Enter your name so others can see who you are.
+          Enter your name so others can see who you are — or skip for a random one.
         </div>
         <input
           autoFocus
           value={value}
           onChange={e => setValue(e.target.value)}
-          onKeyDown={e => e.key === 'Enter' && submit()}
-          placeholder="Your name"
+          onKeyDown={e => e.key === 'Enter' && (value.trim() ? submit() : skip())}
+          placeholder="Your name (optional)"
           maxLength={30}
           style={{
             background: '#2d2d3f', border: '2px solid #374151',
@@ -47,19 +57,37 @@ export default function NamePrompt({ onConfirm }: Props) {
           onFocus={e => (e.target.style.borderColor = '#6366f1')}
           onBlur={e => (e.target.style.borderColor = '#374151')}
         />
-        <button
-          onClick={submit}
-          disabled={value.trim().length === 0}
-          style={{
-            background: value.trim().length > 0 ? '#6366f1' : '#374151',
-            color: '#fff', border: 'none', borderRadius: 8,
-            padding: '10px 0', fontSize: 15, fontWeight: 600,
-            cursor: value.trim().length > 0 ? 'pointer' : 'not-allowed',
-            fontFamily: 'sans-serif', transition: 'background 0.15s',
-          }}
-        >
-          Join
-        </button>
+        <div style={{ display: 'flex', gap: 10 }}>
+          <button
+            onClick={submit}
+            disabled={value.trim().length === 0}
+            style={{
+              flex: 1,
+              background: value.trim().length > 0 ? '#6366f1' : '#374151',
+              color: '#fff', border: 'none', borderRadius: 8,
+              padding: '10px 0', fontSize: 15, fontWeight: 600,
+              cursor: value.trim().length > 0 ? 'pointer' : 'not-allowed',
+              fontFamily: 'sans-serif', transition: 'background 0.15s',
+            }}
+          >
+            Join
+          </button>
+          <button
+            onClick={skip}
+            style={{
+              flex: 1,
+              background: 'transparent',
+              color: '#9ca3af', border: '2px solid #374151', borderRadius: 8,
+              padding: '10px 0', fontSize: 15, fontWeight: 600,
+              cursor: 'pointer', fontFamily: 'sans-serif',
+              transition: 'border-color 0.15s, color 0.15s',
+            }}
+            onMouseEnter={e => { (e.target as HTMLButtonElement).style.borderColor = '#6b7280'; (e.target as HTMLButtonElement).style.color = '#fff'; }}
+            onMouseLeave={e => { (e.target as HTMLButtonElement).style.borderColor = '#374151'; (e.target as HTMLButtonElement).style.color = '#9ca3af'; }}
+          >
+            Skip (random name)
+          </button>
+        </div>
       </div>
     </div>
   );
