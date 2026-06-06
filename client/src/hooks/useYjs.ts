@@ -34,18 +34,8 @@ export interface YjsHandle {
 const COLORS = ['#f97316','#eab308','#22c55e','#06b6d4','#8b5cf6','#ec4899','#ef4444'];
 function colorForId(id: number) { return COLORS[id % COLORS.length]; }
 
-// Assign a persistent display name for this browser session
-const SESSION_NAME = (() => {
-  const stored = sessionStorage.getItem('wb-name');
-  if (stored) return stored;
-  const adj = ['swift','bright','calm','bold','kind','wise','warm'];
-  const noun = ['fox','owl','star','wave','leaf','moon','spark'];
-  const name = adj[Math.floor(Math.random()*adj.length)] + '-' + noun[Math.floor(Math.random()*noun.length)];
-  sessionStorage.setItem('wb-name', name);
-  return name;
-})();
 
-export function useYjs(roomId: string): YjsHandle {
+export function useYjs(roomId: string, displayName: string): YjsHandle {
   const docRef = useRef<Y.Doc | null>(null);
   const providerRef = useRef<WebsocketProvider | null>(null);
   const mapRef = useRef<Y.Map<WhiteboardShape> | null>(null);
@@ -71,7 +61,7 @@ export function useYjs(roomId: string): YjsHandle {
 
     // Set our own awareness state
     provider.awareness.setLocalStateField('cursor', {
-      x: 0, y: 0, name: SESSION_NAME, color: colorForId(doc.clientID),
+      x: 0, y: 0, name: displayName, color: colorForId(doc.clientID),
     });
 
     // Re-render shapes when map changes
@@ -96,7 +86,7 @@ export function useYjs(roomId: string): YjsHandle {
       provider.destroy();
       doc.destroy();
     };
-  }, [roomId]);
+  }, [roomId, displayName]);
 
   const addShape = useCallback((s: WhiteboardShape) => mapRef.current?.set(s.id, s), []);
   const updateShape = useCallback((s: WhiteboardShape) => mapRef.current?.set(s.id, s), []);
@@ -110,7 +100,7 @@ export function useYjs(roomId: string): YjsHandle {
 
   const updateCursor = useCallback((x: number, y: number) => {
     providerRef.current?.awareness.setLocalStateField('cursor', {
-      x, y, name: SESSION_NAME, color: colorForId(docRef.current?.clientID ?? 0),
+      x, y, name: displayName, color: colorForId(docRef.current?.clientID ?? 0),
     });
   }, []);
 

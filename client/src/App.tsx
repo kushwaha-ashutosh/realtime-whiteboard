@@ -4,8 +4,16 @@ import type Konva from 'konva';
 import WhiteboardCanvas from './components/WhiteboardCanvas';
 import Toolbar from './components/Toolbar';
 import Cursors from './components/Cursors';
+import NamePrompt from './components/NamePrompt';
 import { useYjs } from './hooks/useYjs';
 import type { ShapeType } from './types';
+
+function getSavedName(): string | null {
+  return sessionStorage.getItem('wb-display-name');
+}
+function saveDisplayName(name: string) {
+  sessionStorage.setItem('wb-display-name', name);
+}
 
 function randomRoomId(): string {
   const adj = ['violet', 'amber', 'cobalt', 'jade', 'crimson', 'azure'];
@@ -19,12 +27,23 @@ function Room() {
   const [tool, setTool] = useState<ShapeType | 'select'>('rect');
   const [color, setColor] = useState('#3b82f6');
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [displayName, setDisplayName] = useState<string | null>(getSavedName);
   const stageRef = useRef<Konva.Stage>(null);
 
   const {
     shapes, addShape, updateShape, deleteShape, clearShapes,
     updateCursor, cursors, myClientId, undo, redo,
-  } = useYjs(roomId!);
+  } = useYjs(roomId!, displayName ?? '');
+
+  // Show name prompt until the user picks a name
+  if (!displayName) {
+    return (
+      <NamePrompt onConfirm={name => {
+        saveDisplayName(name);
+        setDisplayName(name);
+      }} />
+    );
+  }
 
   // Keyboard shortcuts
   useEffect(() => {
