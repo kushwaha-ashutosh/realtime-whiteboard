@@ -35,18 +35,9 @@ function Room() {
     updateCursor, cursors, myClientId, undo, redo,
   } = useYjs(roomId!, displayName ?? '');
 
-  // Show name prompt until the user picks a name
-  if (!displayName) {
-    return (
-      <NamePrompt onConfirm={name => {
-        saveDisplayName(name);
-        setDisplayName(name);
-      }} />
-    );
-  }
-
-  // Keyboard shortcuts
+  // Keyboard shortcuts (must be before any conditional return)
   useEffect(() => {
+    if (!displayName) return;
     const handler = (e: KeyboardEvent) => {
       const ctrl = e.ctrlKey || e.metaKey;
       if (ctrl && e.key === 'z') { e.preventDefault(); undo(); }
@@ -57,7 +48,17 @@ function Room() {
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [undo, redo, selectedId, deleteShape]);
+  }, [displayName, undo, redo, selectedId, deleteShape]);
+
+  // Show name prompt until the user picks a name
+  if (!displayName) {
+    return (
+      <NamePrompt onConfirm={name => {
+        saveDisplayName(name);
+        setDisplayName(name);
+      }} />
+    );
+  }
 
   const handleSavePng = () => {
     if (!stageRef.current) return;

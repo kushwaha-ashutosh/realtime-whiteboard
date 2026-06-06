@@ -1,4 +1,4 @@
-export type ShapeType = 'rect' | 'ellipse' | 'line';
+export type ShapeType = 'rect' | 'ellipse' | 'line' | 'pen' | 'arrow' | 'text' | 'sticky';
 
 export interface WhiteboardShape {
   id: string;
@@ -10,6 +10,7 @@ export interface WhiteboardShape {
   fill: string;
   stroke: string;
   strokeWidth: number;
-  // for lines
   points?: number[];
+  text?: string;
+  fontSize?: number;
 }
