@@ -21,7 +21,7 @@ const wss = new WebSocketServer({ server });
 // Serve the React build
 app.use(express.static(STATIC_DIR));
 // SPA fallback — any unknown path serves index.html so React Router handles it
-app.get('*', (_req, res) => {
+app.get('/{*path}', (_req, res) => {
   res.sendFile(path.join(STATIC_DIR, 'index.html'));
 });
 
