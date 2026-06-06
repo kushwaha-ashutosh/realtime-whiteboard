@@ -1,5 +1,6 @@
 import { BrowserRouter, Routes, Route, Navigate, useParams } from 'react-router-dom';
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
+import type Konva from 'konva';
 import WhiteboardCanvas from './components/WhiteboardCanvas';
 import Toolbar from './components/Toolbar';
 import Cursors from './components/Cursors';
@@ -18,14 +19,34 @@ function Room() {
   const [tool, setTool] = useState<ShapeType | 'select'>('rect');
   const [color, setColor] = useState('#3b82f6');
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const stageRef = useRef<Konva.Stage>(null);
 
-  const { shapes, addShape, updateShape, deleteShape, clearShapes, updateCursor, cursors, myClientId } = useYjs(roomId!);
+  const {
+    shapes, addShape, updateShape, deleteShape, clearShapes,
+    updateCursor, cursors, myClientId, undo, redo,
+  } = useYjs(roomId!);
 
-  const handleDeleteSelected = () => {
-    if (selectedId) {
-      deleteShape(selectedId);
-      setSelectedId(null);
-    }
+  // Keyboard shortcuts
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      const ctrl = e.ctrlKey || e.metaKey;
+      if (ctrl && e.key === 'z') { e.preventDefault(); undo(); }
+      if (ctrl && (e.key === 'y' || (e.shiftKey && e.key === 'z'))) { e.preventDefault(); redo(); }
+      if (e.key === 'Delete' || e.key === 'Backspace') {
+        if (selectedId) { deleteShape(selectedId); setSelectedId(null); }
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [undo, redo, selectedId, deleteShape]);
+
+  const handleSavePng = () => {
+    if (!stageRef.current) return;
+    const uri = stageRef.current.toDataURL({ pixelRatio: 2 });
+    const a = document.createElement('a');
+    a.href = uri;
+    a.download = `whiteboard-${roomId}.png`;
+    a.click();
   };
 
   return (
@@ -43,7 +64,10 @@ function Room() {
         onToolChange={t => { setTool(t); setSelectedId(null); }}
         onColorChange={setColor}
         onClear={() => { clearShapes(); setSelectedId(null); }}
-        onDeleteSelected={handleDeleteSelected}
+        onDeleteSelected={() => { if (selectedId) { deleteShape(selectedId); setSelectedId(null); } }}
+        onUndo={undo}
+        onRedo={redo}
+        onSavePng={handleSavePng}
       />
       <WhiteboardCanvas
         tool={tool}
@@ -54,6 +78,7 @@ function Room() {
         onCursorMove={updateCursor}
         selectedId={selectedId}
         onSelectId={setSelectedId}
+        stageRef={stageRef}
       />
       <Cursors cursors={cursors} myClientId={myClientId} />
     </>

@@ -1,6 +1,6 @@
 import { useRef, useState, useCallback, useEffect } from 'react';
 import { Stage, Layer, Rect, Ellipse, Line, Transformer } from 'react-konva';
-import Konva from 'konva';
+import type Konva from 'konva';
 import type { WhiteboardShape, ShapeType } from '../types';
 import { nanoid } from '../utils/id';
 
@@ -13,17 +13,18 @@ interface Props {
   onCursorMove?: (x: number, y: number) => void;
   selectedId: string | null;
   onSelectId: (id: string | null) => void;
+  stageRef?: React.RefObject<Konva.Stage | null>;
 }
 
 export default function WhiteboardCanvas({
   tool, color, shapes,
   onShapeAdd, onShapeUpdate, onCursorMove,
-  selectedId, onSelectId,
+  selectedId, onSelectId, stageRef: externalStageRef,
 }: Props) {
-  // Local draft shape while drawing (not yet committed)
   const [draft, setDraft] = useState<WhiteboardShape | null>(null);
   const isDrawing = useRef(false);
-  const stageRef = useRef<Konva.Stage>(null);
+  const internalStageRef = useRef<Konva.Stage>(null);
+  const stageRef = (externalStageRef ?? internalStageRef) as React.RefObject<Konva.Stage | null>;
   const trRef = useRef<Konva.Transformer>(null);
   const [stageSize, setStageSize] = useState({ w: window.innerWidth, h: window.innerHeight });
 

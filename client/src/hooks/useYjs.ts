@@ -27,6 +27,8 @@ export interface YjsHandle {
   updateCursor: (x: number, y: number) => void;
   cursors: Map<number, CursorState>;
   myClientId: number;
+  undo: () => void;
+  redo: () => void;
 }
 
 const COLORS = ['#f97316','#eab308','#22c55e','#06b6d4','#8b5cf6','#ec4899','#ef4444'];
@@ -47,6 +49,7 @@ export function useYjs(roomId: string): YjsHandle {
   const docRef = useRef<Y.Doc | null>(null);
   const providerRef = useRef<WebsocketProvider | null>(null);
   const mapRef = useRef<Y.Map<WhiteboardShape> | null>(null);
+  const undoRef = useRef<Y.UndoManager | null>(null);
   const [shapes, setShapes] = useState<WhiteboardShape[]>([]);
   const [cursors, setCursors] = useState<Map<number, CursorState>>(new Map());
   const [myClientId, setMyClientId] = useState(0);
@@ -60,6 +63,9 @@ export function useYjs(roomId: string): YjsHandle {
     docRef.current = doc;
     providerRef.current = provider;
     mapRef.current = shapeMap;
+    // UndoManager scoped to only the shapes map so Ctrl-Z undoes YOUR edits, not others'
+    const undoManager = new Y.UndoManager(shapeMap, { captureTimeout: 500 });
+    undoRef.current = undoManager;
 
     setMyClientId(doc.clientID);
 
@@ -86,6 +92,7 @@ export function useYjs(roomId: string): YjsHandle {
     return () => {
       shapeMap.unobserve(shapeObserver);
       provider.awareness.off('change', awarenessHandler);
+      undoManager.destroy();
       provider.destroy();
       doc.destroy();
     };
@@ -107,5 +114,8 @@ export function useYjs(roomId: string): YjsHandle {
     });
   }, []);
 
-  return { shapes, addShape, updateShape, deleteShape, clearShapes, updateCursor, cursors, myClientId };
+  const undo = useCallback(() => undoRef.current?.undo(), []);
+  const redo = useCallback(() => undoRef.current?.redo(), []);
+
+  return { shapes, addShape, updateShape, deleteShape, clearShapes, updateCursor, cursors, myClientId, undo, redo };
 }
