@@ -2,16 +2,9 @@ import 'dotenv/config';
 import express from 'express';
 import http from 'http';
 import path from 'path';
-import { WebSocketServer, WebSocket } from 'ws';
-import type { ClientMsg, ServerMsg } from './types';
-import {
-  getOrCreateRoom,
-  applyShapeAdd,
-  applyShapeUpdate,
-  applyShapeDelete,
-  applyClear,
-} from './rooms';
-import { migrate, loadRoom } from './db';
+import { WebSocketServer } from 'ws';
+import { migrate, loadYDocState, saveYDocState } from './db';
+import { setupConnection, loadDocState, getOrCreateYRoom } from './yjsServer';
 
 const PORT = parseInt(process.env.PORT ?? '3001', 10);
 const STATIC_DIR = path.join(__dirname, '../../client/dist');
@@ -25,78 +18,43 @@ app.get('/{*path}', (_req, res) => {
   res.sendFile(path.join(STATIC_DIR, 'index.html'));
 });
 
-function send(ws: WebSocket, msg: ServerMsg) {
-  if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(msg));
+// Debounced DB saves: flush Yjs binary state 1.5s after last update
+const saveTimers = new Map<string, ReturnType<typeof setTimeout>>();
+function scheduleSave(roomId: string, state: Uint8Array) {
+  const existing = saveTimers.get(roomId);
+  if (existing) clearTimeout(existing);
+  saveTimers.set(roomId, setTimeout(() => {
+    saveYDocState(roomId, state).catch(err =>
+      console.error(`[db] save failed for room ${roomId}:`, err),
+    );
+    saveTimers.delete(roomId);
+  }, 1500));
 }
 
-function broadcast(roomId: string, msg: ServerMsg, except?: WebSocket) {
-  const room = getOrCreateRoom(roomId);
-  for (const client of room.clients) {
-    if (client !== except) send(client, msg);
-  }
-}
+// Track which rooms have been hydrated from DB this server session
+const hydrated = new Set<string>();
 
-wss.on('connection', (ws) => {
-  let currentRoomId: string | null = null;
+wss.on('connection', (ws, req) => {
+  // Room ID comes from URL path: /yjs/<roomId>
+  const roomId = (req.url ?? '').replace(/^\/yjs\//, '') || 'default';
 
-  ws.on('message', async (data) => {
-    let msg: ClientMsg;
-    try {
-      msg = JSON.parse(data.toString()) as ClientMsg;
-    } catch {
-      return;
-    }
+  // Register the connection immediately so it can send/receive right away
+  setupConnection(ws, roomId, (id, state) => scheduleSave(id, state));
 
-    if (msg.type === 'join') {
-      if (currentRoomId) {
-        const prev = getOrCreateRoom(currentRoomId);
-        prev.clients.delete(ws);
-      }
-      currentRoomId = msg.roomId;
-      const room = getOrCreateRoom(currentRoomId);
-      room.clients.add(ws);
-
-      // Hydrate from DB if this room is fresh in memory
-      if (room.shapes.length === 0) {
-        try {
-          const saved = await loadRoom(currentRoomId);
-          if (saved.length > 0) room.shapes = saved;
-        } catch (err) {
-          console.error('[db] loadRoom failed:', err);
+  // Hydrate from DB asynchronously (once per room per server session).
+  // applyUpdate on the Yjs doc will propagate saved state to this client
+  // via the normal sync exchange that setupConnection already set up.
+  if (!hydrated.has(roomId)) {
+    hydrated.add(roomId);
+    loadYDocState(roomId)
+      .then(saved => {
+        if (saved && saved.length > 0) {
+          loadDocState(roomId, saved);
+          console.log(`[db] hydrated room "${roomId}" (${saved.length} bytes)`);
         }
-      }
-
-      send(ws, { type: 'init', shapes: room.shapes });
-      return;
-    }
-
-    if (!currentRoomId) return;
-
-    switch (msg.type) {
-      case 'shape_add':
-        applyShapeAdd(getOrCreateRoom(currentRoomId), msg.shape);
-        broadcast(currentRoomId, msg, ws);
-        break;
-      case 'shape_update':
-        applyShapeUpdate(getOrCreateRoom(currentRoomId), msg.shape);
-        broadcast(currentRoomId, msg, ws);
-        break;
-      case 'shape_delete':
-        applyShapeDelete(getOrCreateRoom(currentRoomId), msg.id);
-        broadcast(currentRoomId, msg, ws);
-        break;
-      case 'clear':
-        applyClear(getOrCreateRoom(currentRoomId));
-        broadcast(currentRoomId, msg, ws);
-        break;
-    }
-  });
-
-  ws.on('close', () => {
-    if (currentRoomId) {
-      getOrCreateRoom(currentRoomId).clients.delete(ws);
-    }
-  });
+      })
+      .catch(err => console.error('[db] loadYDocState failed:', err));
+  }
 });
 
 migrate()
