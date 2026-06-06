@@ -2,6 +2,7 @@ import { BrowserRouter, Routes, Route, Navigate, useParams } from 'react-router-
 import { useState } from 'react';
 import WhiteboardCanvas from './components/WhiteboardCanvas';
 import Toolbar from './components/Toolbar';
+import Cursors from './components/Cursors';
 import { useYjs } from './hooks/useYjs';
 import type { ShapeType } from './types';
 
@@ -18,7 +19,7 @@ function Room() {
   const [color, setColor] = useState('#3b82f6');
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
-  const { shapes, addShape, updateShape, deleteShape, clearShapes } = useYjs(roomId!);
+  const { shapes, addShape, updateShape, deleteShape, clearShapes, updateCursor, cursors, myClientId } = useYjs(roomId!);
 
   const handleDeleteSelected = () => {
     if (selectedId) {
@@ -50,9 +51,11 @@ function Room() {
         shapes={shapes}
         onShapeAdd={addShape}
         onShapeUpdate={updateShape}
+        onCursorMove={updateCursor}
         selectedId={selectedId}
         onSelectId={setSelectedId}
       />
+      <Cursors cursors={cursors} myClientId={myClientId} />
     </>
   );
 }

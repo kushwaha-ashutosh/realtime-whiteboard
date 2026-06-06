@@ -8,17 +8,16 @@ interface Props {
   tool: ShapeType | 'select';
   color: string;
   shapes: WhiteboardShape[];
-  // Called once when a new shape is committed (mouse-up)
   onShapeAdd: (shape: WhiteboardShape) => void;
-  // Called when an existing shape is moved or resized
   onShapeUpdate: (shape: WhiteboardShape) => void;
+  onCursorMove?: (x: number, y: number) => void;
   selectedId: string | null;
   onSelectId: (id: string | null) => void;
 }
 
 export default function WhiteboardCanvas({
   tool, color, shapes,
-  onShapeAdd, onShapeUpdate,
+  onShapeAdd, onShapeUpdate, onCursorMove,
   selectedId, onSelectId,
 }: Props) {
   // Local draft shape while drawing (not yet committed)
@@ -76,8 +75,9 @@ export default function WhiteboardCanvas({
   }, [tool, color, onSelectId]);
 
   const handleMouseMove = useCallback(() => {
-    if (!isDrawing.current || !draft) return;
     const pos = getPointer();
+    onCursorMove?.(pos.x, pos.y);
+    if (!isDrawing.current || !draft) return;
     setDraft(prev => {
       if (!prev) return prev;
       if (prev.type === 'rect') return { ...prev, width: pos.x - prev.x, height: pos.y - prev.y };

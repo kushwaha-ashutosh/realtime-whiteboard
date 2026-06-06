@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import * as Y from 'yjs';
 import { WebsocketProvider } from 'y-websocket';
 import type { WhiteboardShape } from '../types';
@@ -11,62 +11,101 @@ function getWsUrl(): string {
   return `${proto}//${host}`;
 }
 
+export interface CursorState {
+  x: number;
+  y: number;
+  name: string;
+  color: string;
+}
+
 export interface YjsHandle {
   shapes: WhiteboardShape[];
   addShape: (s: WhiteboardShape) => void;
   updateShape: (s: WhiteboardShape) => void;
   deleteShape: (id: string) => void;
   clearShapes: () => void;
-  awareness: WebsocketProvider['awareness'] | null;
+  updateCursor: (x: number, y: number) => void;
+  cursors: Map<number, CursorState>;
+  myClientId: number;
 }
+
+const COLORS = ['#f97316','#eab308','#22c55e','#06b6d4','#8b5cf6','#ec4899','#ef4444'];
+function colorForId(id: number) { return COLORS[id % COLORS.length]; }
+
+// Assign a persistent display name for this browser session
+const SESSION_NAME = (() => {
+  const stored = sessionStorage.getItem('wb-name');
+  if (stored) return stored;
+  const adj = ['swift','bright','calm','bold','kind','wise','warm'];
+  const noun = ['fox','owl','star','wave','leaf','moon','spark'];
+  const name = adj[Math.floor(Math.random()*adj.length)] + '-' + noun[Math.floor(Math.random()*noun.length)];
+  sessionStorage.setItem('wb-name', name);
+  return name;
+})();
 
 export function useYjs(roomId: string): YjsHandle {
   const docRef = useRef<Y.Doc | null>(null);
   const providerRef = useRef<WebsocketProvider | null>(null);
   const mapRef = useRef<Y.Map<WhiteboardShape> | null>(null);
   const [shapes, setShapes] = useState<WhiteboardShape[]>([]);
-  const [awareness, setAwareness] = useState<WebsocketProvider['awareness'] | null>(null);
+  const [cursors, setCursors] = useState<Map<number, CursorState>>(new Map());
+  const [myClientId, setMyClientId] = useState(0);
 
   useEffect(() => {
     const doc = new Y.Doc();
     const wsUrl = getWsUrl();
-    const provider = new WebsocketProvider(wsUrl, `yjs/${roomId}`, doc, {
-      connect: true,
-    });
+    const provider = new WebsocketProvider(wsUrl, `yjs/${roomId}`, doc, { connect: true });
     const shapeMap = doc.getMap<WhiteboardShape>('shapes');
 
     docRef.current = doc;
     providerRef.current = provider;
     mapRef.current = shapeMap;
-    setAwareness(provider.awareness);
 
-    // Re-render whenever the map changes
-    const observer = () => {
-      setShapes(Array.from(shapeMap.values()));
-    };
-    shapeMap.observe(observer);
-    // Initial render
+    setMyClientId(doc.clientID);
+
+    // Set our own awareness state
+    provider.awareness.setLocalStateField('cursor', {
+      x: 0, y: 0, name: SESSION_NAME, color: colorForId(doc.clientID),
+    });
+
+    // Re-render shapes when map changes
+    const shapeObserver = () => setShapes(Array.from(shapeMap.values()));
+    shapeMap.observe(shapeObserver);
     setShapes(Array.from(shapeMap.values()));
 
+    // Re-render cursors when awareness changes
+    const awarenessHandler = () => {
+      const next = new Map<number, CursorState>();
+      provider.awareness.getStates().forEach((state, clientId) => {
+        if (state.cursor) next.set(clientId, state.cursor as CursorState);
+      });
+      setCursors(next);
+    };
+    provider.awareness.on('change', awarenessHandler);
+
     return () => {
-      shapeMap.unobserve(observer);
+      shapeMap.unobserve(shapeObserver);
+      provider.awareness.off('change', awarenessHandler);
       provider.destroy();
       doc.destroy();
-      docRef.current = null;
-      providerRef.current = null;
-      mapRef.current = null;
     };
   }, [roomId]);
 
-  const addShape = (s: WhiteboardShape) => mapRef.current?.set(s.id, s);
-  const updateShape = (s: WhiteboardShape) => mapRef.current?.set(s.id, s);
-  const deleteShape = (id: string) => mapRef.current?.delete(id);
-  const clearShapes = () => {
+  const addShape = useCallback((s: WhiteboardShape) => mapRef.current?.set(s.id, s), []);
+  const updateShape = useCallback((s: WhiteboardShape) => mapRef.current?.set(s.id, s), []);
+  const deleteShape = useCallback((id: string) => mapRef.current?.delete(id), []);
+  const clearShapes = useCallback(() => {
     const m = mapRef.current;
-    if (!m) return;
-    const doc = docRef.current!;
+    const doc = docRef.current;
+    if (!m || !doc) return;
     doc.transact(() => { for (const key of m.keys()) m.delete(key); });
-  };
+  }, []);
 
-  return { shapes, addShape, updateShape, deleteShape, clearShapes, awareness };
+  const updateCursor = useCallback((x: number, y: number) => {
+    providerRef.current?.awareness.setLocalStateField('cursor', {
+      x, y, name: SESSION_NAME, color: colorForId(docRef.current?.clientID ?? 0),
+    });
+  }, []);
+
+  return { shapes, addShape, updateShape, deleteShape, clearShapes, updateCursor, cursors, myClientId };
 }
