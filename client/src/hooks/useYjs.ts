@@ -18,6 +18,14 @@ export interface CursorState {
   color: string;
 }
 
+export interface ChatMessage {
+  id: string;
+  name: string;
+  color: string;
+  text: string;
+  ts: number;
+}
+
 export interface YjsHandle {
   shapes: WhiteboardShape[];
   addShape: (s: WhiteboardShape) => void;
@@ -29,47 +37,65 @@ export interface YjsHandle {
   myClientId: number;
   undo: () => void;
   redo: () => void;
+  messages: ChatMessage[];
+  sendMessage: (text: string) => void;
+  wsError: 'wrong_password' | null;
 }
 
 const COLORS = ['#f97316','#eab308','#22c55e','#06b6d4','#8b5cf6','#ec4899','#ef4444'];
 function colorForId(id: number) { return COLORS[id % COLORS.length]; }
 
+function nanoid() {
+  return Math.random().toString(36).slice(2) + Date.now().toString(36);
+}
 
-export function useYjs(roomId: string, displayName: string): YjsHandle {
+export function useYjs(
+  roomId: string,
+  displayName: string,
+  passwordHash?: string,
+): YjsHandle {
   const docRef = useRef<Y.Doc | null>(null);
   const providerRef = useRef<WebsocketProvider | null>(null);
   const mapRef = useRef<Y.Map<WhiteboardShape> | null>(null);
+  const chatRef = useRef<Y.Array<ChatMessage> | null>(null);
   const undoRef = useRef<Y.UndoManager | null>(null);
   const [shapes, setShapes] = useState<WhiteboardShape[]>([]);
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [cursors, setCursors] = useState<Map<number, CursorState>>(new Map());
   const [myClientId, setMyClientId] = useState(0);
+  const [wsError, setWsError] = useState<'wrong_password' | null>(null);
 
   useEffect(() => {
     const doc = new Y.Doc();
     const wsUrl = getWsUrl();
-    const provider = new WebsocketProvider(wsUrl, `yjs/${roomId}`, doc, { connect: true });
+    const room = passwordHash ? `yjs/${roomId}?pwd=${passwordHash}` : `yjs/${roomId}`;
+    const provider = new WebsocketProvider(wsUrl, room, doc, { connect: true });
     const shapeMap = doc.getMap<WhiteboardShape>('shapes');
+    const chatArr = doc.getArray<ChatMessage>('chat');
 
     docRef.current = doc;
     providerRef.current = provider;
     mapRef.current = shapeMap;
-    // UndoManager scoped to only the shapes map so Ctrl-Z undoes YOUR edits, not others'
+    chatRef.current = chatArr;
+
     const undoManager = new Y.UndoManager(shapeMap, { captureTimeout: 500 });
     undoRef.current = undoManager;
 
     setMyClientId(doc.clientID);
+    setWsError(null);
 
-    // Set our own awareness state
     provider.awareness.setLocalStateField('cursor', {
       x: 0, y: 0, name: displayName, color: colorForId(doc.clientID),
     });
 
-    // Re-render shapes when map changes
     const shapeObserver = () => setShapes(Array.from(shapeMap.values()));
     shapeMap.observe(shapeObserver);
     setShapes(Array.from(shapeMap.values()));
 
-    // Re-render cursors when awareness changes
+    const chatObserver = () => setMessages(chatArr.toArray());
+    chatArr.observe(chatObserver);
+    setMessages(chatArr.toArray());
+
     const awarenessHandler = () => {
       const next = new Map<number, CursorState>();
       provider.awareness.getStates().forEach((state, clientId) => {
@@ -79,14 +105,20 @@ export function useYjs(roomId: string, displayName: string): YjsHandle {
     };
     provider.awareness.on('change', awarenessHandler);
 
+    // Detect wrong-password close
+    provider.ws?.addEventListener('close', (e: CloseEvent) => {
+      if (e.code === 4001) setWsError('wrong_password');
+    });
+
     return () => {
       shapeMap.unobserve(shapeObserver);
+      chatArr.unobserve(chatObserver);
       provider.awareness.off('change', awarenessHandler);
       undoManager.destroy();
       provider.destroy();
       doc.destroy();
     };
-  }, [roomId, displayName]);
+  }, [roomId, displayName, passwordHash]);
 
   const addShape = useCallback((s: WhiteboardShape) => mapRef.current?.set(s.id, s), []);
   const updateShape = useCallback((s: WhiteboardShape) => mapRef.current?.set(s.id, s), []);
@@ -102,10 +134,22 @@ export function useYjs(roomId: string, displayName: string): YjsHandle {
     providerRef.current?.awareness.setLocalStateField('cursor', {
       x, y, name: displayName, color: colorForId(docRef.current?.clientID ?? 0),
     });
-  }, []);
+  }, [displayName]);
+
+  const sendMessage = useCallback((text: string) => {
+    const doc = docRef.current;
+    const arr = chatRef.current;
+    if (!arr || !doc) return;
+    const color = colorForId(doc.clientID);
+    arr.push([{ id: nanoid(), name: displayName, color, text: text.trim(), ts: Date.now() }]);
+  }, [displayName]);
 
   const undo = useCallback(() => undoRef.current?.undo(), []);
   const redo = useCallback(() => undoRef.current?.redo(), []);
 
-  return { shapes, addShape, updateShape, deleteShape, clearShapes, updateCursor, cursors, myClientId, undo, redo };
+  return {
+    shapes, addShape, updateShape, deleteShape, clearShapes,
+    updateCursor, cursors, myClientId, undo, redo,
+    messages, sendMessage, wsError,
+  };
 }

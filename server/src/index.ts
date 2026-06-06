@@ -3,7 +3,10 @@ import express from 'express';
 import http from 'http';
 import path from 'path';
 import { WebSocketServer } from 'ws';
-import { migrate, loadYDocState, saveYDocState } from './db';
+import {
+  migrate, loadYDocState, saveYDocState,
+  getRoomPasswordHash, setRoomPassword, clearRoomPassword, sha256,
+} from './db';
 import { setupConnection, loadDocState, getOrCreateYRoom } from './yjsServer';
 
 const PORT = parseInt(process.env.PORT ?? '3001', 10);
@@ -13,12 +16,43 @@ const app = express();
 const server = http.createServer(app);
 const wss = new WebSocketServer({ server });
 
+app.use(express.json());
+
+// ── REST API ────────────────────────────────────────────────────────────
+app.get('/api/rooms/:roomId/info', async (req, res) => {
+  try {
+    const hash = await getRoomPasswordHash(req.params.roomId);
+    res.json({ locked: !!hash });
+  } catch {
+    res.json({ locked: false });
+  }
+});
+
+app.post('/api/rooms/:roomId/lock', async (req, res) => {
+  const { password } = req.body as { password?: string };
+  if (!password) { res.status(400).json({ error: 'password required' }); return; }
+  await setRoomPassword(req.params.roomId, sha256(password));
+  res.json({ ok: true });
+});
+
+app.delete('/api/rooms/:roomId/lock', async (req, res) => {
+  const { password } = req.body as { password?: string };
+  const stored = await getRoomPasswordHash(req.params.roomId).catch(() => null);
+  if (!stored) { res.json({ ok: true }); return; }
+  if (!password || sha256(password) !== stored) {
+    res.status(403).json({ error: 'Wrong password' }); return;
+  }
+  await clearRoomPassword(req.params.roomId);
+  res.json({ ok: true });
+});
+
+// ── Static / SPA ────────────────────────────────────────────────────────
 app.use(express.static(STATIC_DIR));
 app.get('/{*path}', (_req, res) => {
   res.sendFile(path.join(STATIC_DIR, 'index.html'));
 });
 
-// Debounced DB saves: flush Yjs binary state 1.5s after last update
+// ── Debounced DB saves ──────────────────────────────────────────────────
 const saveTimers = new Map<string, ReturnType<typeof setTimeout>>();
 function scheduleSave(roomId: string, state: Uint8Array) {
   const existing = saveTimers.get(roomId);
@@ -31,19 +65,26 @@ function scheduleSave(roomId: string, state: Uint8Array) {
   }, 1500));
 }
 
-// Track which rooms have been hydrated from DB this server session
 const hydrated = new Set<string>();
 
-wss.on('connection', (ws, req) => {
-  // Room ID comes from URL path: /yjs/<roomId>
-  const roomId = (req.url ?? '').replace(/^\/yjs\//, '') || 'default';
+wss.on('connection', async (ws, req) => {
+  const url = new URL(req.url ?? '/', 'http://placeholder');
+  const roomId = url.pathname.replace(/^\/yjs\//, '').split('?')[0] || 'default';
+  const pwd = url.searchParams.get('pwd');
 
-  // Register the connection immediately so it can send/receive right away
+  // Password check (fast — single DB read)
+  try {
+    const storedHash = await getRoomPasswordHash(roomId);
+    if (storedHash && pwd !== storedHash) {
+      ws.close(4001, 'Wrong password');
+      return;
+    }
+  } catch {
+    // If DB is down, allow connection (fail-open)
+  }
+
   setupConnection(ws, roomId, (id, state) => scheduleSave(id, state));
 
-  // Hydrate from DB asynchronously (once per room per server session).
-  // applyUpdate on the Yjs doc will propagate saved state to this client
-  // via the normal sync exchange that setupConnection already set up.
   if (!hydrated.has(roomId)) {
     hydrated.add(roomId);
     loadYDocState(roomId)

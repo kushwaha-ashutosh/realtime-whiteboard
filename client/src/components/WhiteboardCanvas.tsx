@@ -14,12 +14,15 @@ interface Props {
   selectedId: string | null;
   onSelectId: (id: string | null) => void;
   stageRef?: React.RefObject<Konva.Stage | null>;
+  stageOffsetX?: number;
+  stageOffsetY?: number;
 }
 
 export default function WhiteboardCanvas({
   tool, color, shapes,
   onShapeAdd, onShapeUpdate, onCursorMove,
   selectedId, onSelectId, stageRef: externalStageRef,
+  stageOffsetX = 0, stageOffsetY = 0,
 }: Props) {
   const [draft, setDraft] = useState<WhiteboardShape | null>(null);
   const isDrawing = useRef(false);
@@ -350,6 +353,8 @@ export default function WhiteboardCanvas({
         ref={stageRef}
         width={stageSize.w}
         height={stageSize.h}
+        x={stageOffsetX}
+        y={stageOffsetY}
         style={{ background: '#0f0f17', cursor: cursorStyle() }}
         onMouseDown={handleMouseDown}
         onMouseMove={handleMouseMove}
