@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useTheme } from '../ThemeContext';
 
 const ADJS = ['swift','bright','calm','bold','kind','wise','warm','cool','brave','eager'];
 const NOUNS = ['fox','owl','star','wave','leaf','moon','spark','hawk','river','cloud'];
@@ -13,6 +14,7 @@ interface Props {
 }
 
 export default function NamePrompt({ onConfirm }: Props) {
+  const t = useTheme();
   const [value, setValue] = useState('');
 
   const submit = () => {
@@ -26,19 +28,20 @@ export default function NamePrompt({ onConfirm }: Props) {
   return (
     <div style={{
       position: 'fixed', inset: 0, zIndex: 1000,
-      background: 'rgba(0,0,0,0.7)',
+      background: t.mode === 'dark' ? 'rgba(0,0,0,0.7)' : 'rgba(0,0,0,0.4)',
       display: 'flex', alignItems: 'center', justifyContent: 'center',
     }}>
       <div style={{
-        background: '#1e1e2e', borderRadius: 16, padding: '32px 36px',
-        boxShadow: '0 8px 40px rgba(0,0,0,0.6)',
+        background: t.panelBg, borderRadius: 16, padding: '32px 36px',
+        border: `1px solid ${t.panelBorder}`,
+        boxShadow: '0 8px 40px rgba(0,0,0,0.4)',
         display: 'flex', flexDirection: 'column', gap: 16,
         minWidth: 320,
       }}>
-        <div style={{ color: '#fff', fontSize: 20, fontWeight: 700, fontFamily: 'sans-serif' }}>
+        <div style={{ color: t.text, fontSize: 20, fontWeight: 700, fontFamily: 'sans-serif' }}>
           Welcome to the whiteboard
         </div>
-        <div style={{ color: '#9ca3af', fontSize: 14, fontFamily: 'sans-serif' }}>
+        <div style={{ color: t.textMuted, fontSize: 14, fontFamily: 'sans-serif' }}>
           Enter your name so others can see who you are — or skip for a random one.
         </div>
         <input
@@ -49,13 +52,13 @@ export default function NamePrompt({ onConfirm }: Props) {
           placeholder="Your name (optional)"
           maxLength={30}
           style={{
-            background: '#2d2d3f', border: '2px solid #374151',
+            background: t.inputBg, border: `2px solid ${t.panelBorder}`,
             borderRadius: 8, padding: '10px 14px',
-            color: '#fff', fontSize: 15, fontFamily: 'sans-serif',
+            color: t.text, fontSize: 15, fontFamily: 'sans-serif',
             outline: 'none',
           }}
-          onFocus={e => (e.target.style.borderColor = '#6366f1')}
-          onBlur={e => (e.target.style.borderColor = '#374151')}
+          onFocus={e => (e.target.style.borderColor = t.accent)}
+          onBlur={e => (e.target.style.borderColor = t.panelBorder)}
         />
         <div style={{ display: 'flex', gap: 10 }}>
           <button
@@ -63,8 +66,9 @@ export default function NamePrompt({ onConfirm }: Props) {
             disabled={value.trim().length === 0}
             style={{
               flex: 1,
-              background: value.trim().length > 0 ? '#6366f1' : '#374151',
-              color: '#fff', border: 'none', borderRadius: 8,
+              background: value.trim().length > 0 ? t.accent : t.btnDefault,
+              color: value.trim().length > 0 ? '#fff' : t.textMuted,
+              border: 'none', borderRadius: 8,
               padding: '10px 0', fontSize: 15, fontWeight: 600,
               cursor: value.trim().length > 0 ? 'pointer' : 'not-allowed',
               fontFamily: 'sans-serif', transition: 'background 0.15s',
@@ -77,13 +81,19 @@ export default function NamePrompt({ onConfirm }: Props) {
             style={{
               flex: 1,
               background: 'transparent',
-              color: '#9ca3af', border: '2px solid #374151', borderRadius: 8,
+              color: t.textMuted, border: `2px solid ${t.panelBorder}`, borderRadius: 8,
               padding: '10px 0', fontSize: 15, fontWeight: 600,
               cursor: 'pointer', fontFamily: 'sans-serif',
               transition: 'border-color 0.15s, color 0.15s',
             }}
-            onMouseEnter={e => { (e.target as HTMLButtonElement).style.borderColor = '#6b7280'; (e.target as HTMLButtonElement).style.color = '#fff'; }}
-            onMouseLeave={e => { (e.target as HTMLButtonElement).style.borderColor = '#374151'; (e.target as HTMLButtonElement).style.color = '#9ca3af'; }}
+            onMouseEnter={e => {
+              (e.target as HTMLButtonElement).style.borderColor = t.accent;
+              (e.target as HTMLButtonElement).style.color = t.text;
+            }}
+            onMouseLeave={e => {
+              (e.target as HTMLButtonElement).style.borderColor = t.panelBorder;
+              (e.target as HTMLButtonElement).style.color = t.textMuted;
+            }}
           >
             Skip (random name)
           </button>

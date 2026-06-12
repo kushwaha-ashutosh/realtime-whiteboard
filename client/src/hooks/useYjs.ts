@@ -65,10 +65,16 @@ export function useYjs(
   const [myClientId, setMyClientId] = useState(0);
   const [wsError, setWsError] = useState<'wrong_password' | null>(null);
 
+  // Keep a ref so the WS URL stays current on reconnect without
+  // tearing down the doc (which wipes content) on every lock/unlock.
+  const passwordHashRef = useRef(passwordHash);
+  useEffect(() => { passwordHashRef.current = passwordHash; }, [passwordHash]);
+
   useEffect(() => {
     const doc = new Y.Doc();
     const wsUrl = getWsUrl();
-    const room = passwordHash ? `yjs/${roomId}?pwd=${passwordHash}` : `yjs/${roomId}`;
+    const pwd = passwordHashRef.current;
+    const room = pwd ? `yjs/${roomId}?pwd=${pwd}` : `yjs/${roomId}`;
     const provider = new WebsocketProvider(wsUrl, room, doc, { connect: true });
     const shapeMap = doc.getMap<WhiteboardShape>('shapes');
     const chatArr = doc.getArray<ChatMessage>('chat');
@@ -118,7 +124,8 @@ export function useYjs(
       provider.destroy();
       doc.destroy();
     };
-  }, [roomId, displayName, passwordHash]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [roomId, displayName]); // passwordHash intentionally excluded — changing it (lock/unlock) must not wipe the doc
 
   const addShape = useCallback((s: WhiteboardShape) => mapRef.current?.set(s.id, s), []);
   const updateShape = useCallback((s: WhiteboardShape) => mapRef.current?.set(s.id, s), []);

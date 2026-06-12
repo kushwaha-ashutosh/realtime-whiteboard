@@ -31,18 +31,26 @@ app.get('/api/rooms/:roomId/info', async (req, res) => {
 app.post('/api/rooms/:roomId/lock', async (req, res) => {
   const { password } = req.body as { password?: string };
   if (!password) { res.status(400).json({ error: 'password required' }); return; }
-  await setRoomPassword(req.params.roomId, sha256(password));
+  const hash = sha256(password);
+  await setRoomPassword(req.params.roomId, hash);
+  console.log(`[lock] room="${req.params.roomId}" locked, stored hash="${hash.slice(0,8)}..."`);
   res.json({ ok: true });
 });
 
 app.delete('/api/rooms/:roomId/lock', async (req, res) => {
   const { password } = req.body as { password?: string };
+  console.log(`[unlock] room="${req.params.roomId}" body password present=${!!password}`);
   const stored = await getRoomPasswordHash(req.params.roomId).catch(() => null);
+  console.log(`[unlock] stored hash=${stored ? stored.slice(0,8) + '...' : 'null'}`);
   if (!stored) { res.json({ ok: true }); return; }
-  if (!password || sha256(password) !== stored) {
+  if (!password) { res.status(400).json({ error: 'password required' }); return; }
+  const incoming = sha256(password);
+  console.log(`[unlock] incoming hash="${incoming.slice(0,8)}..." match=${incoming === stored}`);
+  if (incoming !== stored) {
     res.status(403).json({ error: 'Wrong password' }); return;
   }
   await clearRoomPassword(req.params.roomId);
+  console.log(`[unlock] room="${req.params.roomId}" unlocked successfully`);
   res.json({ ok: true });
 });
 

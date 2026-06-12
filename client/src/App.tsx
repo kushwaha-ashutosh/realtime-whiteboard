@@ -8,8 +8,14 @@ import NamePrompt from './components/NamePrompt';
 import PasswordPrompt from './components/PasswordPrompt';
 import UserList from './components/UserList';
 import Chat from './components/Chat';
+import GridCanvas from './components/GridCanvas';
+import Minimap from './components/Minimap';
+import StrokePanel from './components/StrokePanel';
 import { useYjs } from './hooks/useYjs';
-import type { ShapeType } from './types';
+import type { ShapeType, GridType, Viewport } from './types';
+import { ThemeContext } from './ThemeContext';
+import { dark, light } from './theme';
+import type { ThemeMode } from './theme';
 
 function getSavedName(): string | null {
   return sessionStorage.getItem('wb-display-name');
@@ -30,19 +36,26 @@ async function sha256(text: string): Promise<string> {
   return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
 }
 
+const DEFAULT_VIEWPORT: Viewport = { x: 0, y: 0, scale: 1 };
+
 function Room() {
   const { roomId } = useParams<{ roomId: string }>();
   const [tool, setTool] = useState<ShapeType | 'select'>('rect');
   const [color, setColor] = useState('#3b82f6');
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [displayName, setDisplayName] = useState<string | null>(getSavedName);
   const [passwordHash, setPasswordHash] = useState<string | undefined>(undefined);
   const [roomLocked, setRoomLocked] = useState(false);
   const [showPasswordPrompt, setShowPasswordPrompt] = useState(false);
   const [passwordError, setPasswordError] = useState('');
   const [followingId, setFollowingId] = useState<number | null>(null);
-  const [stageOffset, setStageOffset] = useState({ x: 0, y: 0 });
+  const [viewport, setViewport] = useState<Viewport>(DEFAULT_VIEWPORT);
+  const [gridType, setGridType] = useState<GridType>('dots');
+  const [strokeWidth, setStrokeWidth] = useState(2);
+  const [themeMode, setThemeMode] = useState<ThemeMode>('light');
   const stageRef = useRef<Konva.Stage>(null);
+
+  const theme = themeMode === 'dark' ? dark : light;
 
   const {
     shapes, addShape, updateShape, deleteShape, clearShapes,
@@ -50,7 +63,6 @@ function Room() {
     messages, sendMessage, wsError,
   } = useYjs(roomId!, displayName ?? '', passwordHash);
 
-  // Check if room is locked on mount
   useEffect(() => {
     if (!roomId) return;
     fetch(`/api/rooms/${roomId}/info`)
@@ -62,7 +74,6 @@ function Room() {
       .catch(() => {});
   }, [roomId]);
 
-  // Handle wrong password from WS
   useEffect(() => {
     if (wsError === 'wrong_password') {
       setPasswordError('Wrong password — try again.');
@@ -71,35 +82,42 @@ function Room() {
     }
   }, [wsError]);
 
-  // Follow mode: pan stage to keep followed user's cursor centered
+  // Follow mode: pan to keep followed user centered
   useEffect(() => {
-    if (followingId === null) {
-      setStageOffset({ x: 0, y: 0 });
-      return;
-    }
+    if (followingId === null) return;
     const cursor = cursors.get(followingId);
     if (!cursor) return;
-    setStageOffset({
-      x: window.innerWidth / 2 - cursor.x,
-      y: window.innerHeight / 2 - cursor.y,
-    });
+    setViewport(vp => ({
+      ...vp,
+      x: window.innerWidth / 2 - cursor.x * vp.scale,
+      y: window.innerHeight / 2 - cursor.y * vp.scale,
+    }));
   }, [cursors, followingId]);
 
   // Keyboard shortcuts
   useEffect(() => {
     if (!displayName) return;
     const handler = (e: KeyboardEvent) => {
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
       const ctrl = e.ctrlKey || e.metaKey;
       if (ctrl && e.key === 'z') { e.preventDefault(); undo(); }
       if (ctrl && (e.key === 'y' || (e.shiftKey && e.key === 'z'))) { e.preventDefault(); redo(); }
       if (e.key === 'Delete' || e.key === 'Backspace') {
-        if (selectedId) { deleteShape(selectedId); setSelectedId(null); }
+        if (selectedIds.length > 0) {
+          selectedIds.forEach(id => deleteShape(id));
+          setSelectedIds([]);
+        }
       }
       if (e.key === 'Escape') setFollowingId(null);
+      if (e.key === 'Home') setViewport(DEFAULT_VIEWPORT);
+      if (ctrl && e.key === 'a') {
+        e.preventDefault();
+        setSelectedIds(shapes.map(s => s.id));
+      }
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [displayName, undo, redo, selectedId, deleteShape]);
+  }, [displayName, undo, redo, selectedIds, deleteShape, shapes]);
 
   const handleSavePng = () => {
     if (!stageRef.current) return;
@@ -118,11 +136,12 @@ function Room() {
   };
 
   const handleLock = async (password: string) => {
-    await fetch(`/api/rooms/${roomId}/lock`, {
+    const res = await fetch(`/api/rooms/${roomId}/lock`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ password }),
     });
+    if (!res.ok) return;
     setRoomLocked(true);
     const hash = await sha256(password);
     setPasswordHash(hash);
@@ -134,41 +153,43 @@ function Room() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ password }),
     });
-    if (res.ok) {
-      setRoomLocked(false);
-      setPasswordHash(undefined);
-      return true;
-    }
+    const body = await res.json().catch(() => ({}));
+    console.log('[unlock] response:', res.status, body);
+    if (res.ok) { setRoomLocked(false); setPasswordHash(undefined); return true; }
     return false;
   };
 
-  // Show name prompt first
   if (!displayName) {
     return (
-      <NamePrompt onConfirm={name => {
-        saveDisplayName(name);
-        setDisplayName(name);
-      }} />
+      <ThemeContext.Provider value={theme}>
+        <NamePrompt onConfirm={name => {
+          saveDisplayName(name);
+          setDisplayName(name);
+        }} />
+      </ThemeContext.Provider>
     );
   }
 
-  // Then password prompt if room is locked
   if (showPasswordPrompt) {
     return (
-      <PasswordPrompt
-        onConfirm={handlePasswordConfirm}
-        error={passwordError}
-      />
+      <ThemeContext.Provider value={theme}>
+        <PasswordPrompt onConfirm={handlePasswordConfirm} error={passwordError} />
+      </ThemeContext.Provider>
     );
   }
 
   return (
-    <>
+    <ThemeContext.Provider value={theme}>
+      {/* Solid background behind grid */}
+      <div style={{ position: 'fixed', inset: 0, background: theme.canvasBg, zIndex: 0 }} />
+      <GridCanvas viewport={viewport} gridType={gridType} />
+
       {/* Room ID badge */}
       <div style={{
         position: 'fixed', top: 12, right: 16, zIndex: 200,
-        background: '#1e1e2e', borderRadius: 8, padding: '4px 10px',
-        color: '#6366f1', fontSize: 12, fontFamily: 'monospace',
+        background: theme.panelBg, borderRadius: 8, padding: '4px 10px',
+        border: `1px solid ${theme.panelBorder}`,
+        color: theme.accent, fontSize: 12, fontFamily: 'monospace',
       }}>
         room: {roomId}
       </div>
@@ -199,32 +220,52 @@ function Room() {
       <Toolbar
         tool={tool}
         color={color}
-        onToolChange={t => { setTool(t); setSelectedId(null); }}
+        gridType={gridType}
+        zoomPct={Math.round(viewport.scale * 100)}
+        themeMode={themeMode}
+        onToolChange={t => { setTool(t); setSelectedIds([]); }}
         onColorChange={setColor}
-        onClear={() => { clearShapes(); setSelectedId(null); }}
-        onDeleteSelected={() => { if (selectedId) { deleteShape(selectedId); setSelectedId(null); } }}
+        onGridChange={setGridType}
+        onClear={() => { clearShapes(); setSelectedIds([]); }}
+        onDeleteSelected={() => {
+          if (selectedIds.length > 0) {
+            selectedIds.forEach(id => deleteShape(id));
+            setSelectedIds([]);
+          }
+        }}
         onUndo={undo}
         onRedo={redo}
         onSavePng={handleSavePng}
+        onResetView={() => setViewport(DEFAULT_VIEWPORT)}
+        onZoomTo={scale => setViewport(vp => ({
+          x: window.innerWidth / 2 - (window.innerWidth / 2 - vp.x) / vp.scale * scale,
+          y: window.innerHeight / 2 - (window.innerHeight / 2 - vp.y) / vp.scale * scale,
+          scale,
+        }))}
+        onThemeToggle={() => setThemeMode(m => m === 'dark' ? 'light' : 'dark')}
       />
+      <StrokePanel strokeWidth={strokeWidth} color={color} onChange={setStrokeWidth} />
       <WhiteboardCanvas
         tool={tool}
         color={color}
+        strokeWidth={strokeWidth}
         shapes={shapes}
         onShapeAdd={addShape}
         onShapeUpdate={updateShape}
+        onShapeDelete={deleteShape}
         onCursorMove={updateCursor}
-        selectedId={selectedId}
-        onSelectId={setSelectedId}
+        selectedIds={selectedIds}
+        onSelectIds={setSelectedIds}
         stageRef={stageRef}
-        stageOffsetX={stageOffset.x}
-        stageOffsetY={stageOffset.y}
+        viewport={viewport}
+        onViewportChange={setViewport}
       />
       <Cursors
         cursors={cursors}
         myClientId={myClientId}
-        offsetX={stageOffset.x}
-        offsetY={stageOffset.y}
+        offsetX={viewport.x}
+        offsetY={viewport.y}
+        scale={viewport.scale}
       />
       <UserList
         cursors={cursors}
@@ -242,7 +283,8 @@ function Room() {
         displayName={displayName}
         onSend={sendMessage}
       />
-    </>
+      <Minimap shapes={shapes} viewport={viewport} />
+    </ThemeContext.Provider>
   );
 }
 

@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useTheme } from '../ThemeContext';
 
 interface Props {
   onConfirm: (password: string) => void;
@@ -6,6 +7,7 @@ interface Props {
 }
 
 export default function PasswordPrompt({ onConfirm, error }: Props) {
+  const t = useTheme();
   const [value, setValue] = useState('');
 
   const submit = () => {
@@ -17,19 +19,20 @@ export default function PasswordPrompt({ onConfirm, error }: Props) {
   return (
     <div style={{
       position: 'fixed', inset: 0, zIndex: 1000,
-      background: 'rgba(0,0,0,0.7)',
+      background: t.mode === 'dark' ? 'rgba(0,0,0,0.7)' : 'rgba(0,0,0,0.4)',
       display: 'flex', alignItems: 'center', justifyContent: 'center',
     }}>
       <div style={{
-        background: '#1e1e2e', borderRadius: 16, padding: '32px 36px',
-        boxShadow: '0 8px 40px rgba(0,0,0,0.6)',
+        background: t.panelBg, borderRadius: 16, padding: '32px 36px',
+        border: `1px solid ${t.panelBorder}`,
+        boxShadow: '0 8px 40px rgba(0,0,0,0.4)',
         display: 'flex', flexDirection: 'column', gap: 14,
         minWidth: 320,
       }}>
-        <div style={{ color: '#fff', fontSize: 20, fontWeight: 700, fontFamily: 'sans-serif' }}>
+        <div style={{ color: t.text, fontSize: 20, fontWeight: 700, fontFamily: 'sans-serif' }}>
           🔒 Room is locked
         </div>
-        <div style={{ color: '#9ca3af', fontSize: 14, fontFamily: 'sans-serif' }}>
+        <div style={{ color: t.textMuted, fontSize: 14, fontFamily: 'sans-serif' }}>
           This room requires a password to join.
         </div>
         {error && (
@@ -45,20 +48,21 @@ export default function PasswordPrompt({ onConfirm, error }: Props) {
           onKeyDown={e => e.key === 'Enter' && submit()}
           placeholder="Enter password"
           style={{
-            background: '#2d2d3f', border: '2px solid #374151',
+            background: t.inputBg, border: `2px solid ${t.panelBorder}`,
             borderRadius: 8, padding: '10px 14px',
-            color: '#fff', fontSize: 15, fontFamily: 'sans-serif',
+            color: t.text, fontSize: 15, fontFamily: 'sans-serif',
             outline: 'none',
           }}
-          onFocus={e => (e.target.style.borderColor = '#6366f1')}
-          onBlur={e => (e.target.style.borderColor = '#374151')}
+          onFocus={e => (e.target.style.borderColor = t.accent)}
+          onBlur={e => (e.target.style.borderColor = t.panelBorder)}
         />
         <button
           onClick={submit}
           disabled={!value.trim()}
           style={{
-            background: value.trim() ? '#6366f1' : '#374151',
-            color: '#fff', border: 'none', borderRadius: 8,
+            background: value.trim() ? t.accent : t.btnDefault,
+            color: value.trim() ? '#fff' : t.textMuted,
+            border: 'none', borderRadius: 8,
             padding: '10px 0', fontSize: 15, fontWeight: 600,
             cursor: value.trim() ? 'pointer' : 'not-allowed',
             fontFamily: 'sans-serif',

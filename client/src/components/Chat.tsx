@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import type { ChatMessage } from '../hooks/useYjs';
+import { useTheme } from '../ThemeContext';
 
 interface Props {
   messages: ChatMessage[];
@@ -13,6 +14,7 @@ function formatTime(ts: number) {
 }
 
 export default function Chat({ messages, myClientId: _myClientId, displayName: _dn, onSend }: Props) {
+  const t = useTheme();
   const [open, setOpen] = useState(false);
   const [input, setInput] = useState('');
   const [unread, setUnread] = useState(0);
@@ -39,18 +41,17 @@ export default function Chat({ messages, myClientId: _myClientId, displayName: _
 
   return (
     <>
-      {/* Toggle button */}
       <button
         onClick={open ? handleClose : handleOpen}
         title="Chat"
         style={{
           position: 'fixed', bottom: 20, right: 20, zIndex: 200,
           width: 48, height: 48, borderRadius: '50%',
-          background: open ? '#6366f1' : '#1e1e2e',
-          border: '2px solid #374151',
+          background: open ? t.accent : t.panelBg,
+          border: `2px solid ${t.panelBorder}`,
           cursor: 'pointer', fontSize: 20,
           display: 'flex', alignItems: 'center', justifyContent: 'center',
-          boxShadow: '0 4px 16px rgba(0,0,0,0.4)',
+          boxShadow: '0 4px 16px rgba(0,0,0,0.3)',
         }}
       >
         💬
@@ -67,37 +68,34 @@ export default function Chat({ messages, myClientId: _myClientId, displayName: _
         )}
       </button>
 
-      {/* Chat panel */}
       {open && (
         <div style={{
           position: 'fixed', bottom: 80, right: 20, zIndex: 200,
           width: 300, height: 420,
-          background: '#1e1e2e', border: '1px solid #374151',
-          borderRadius: 12, boxShadow: '0 8px 32px rgba(0,0,0,0.5)',
+          background: t.panelBg, border: `1px solid ${t.panelBorder}`,
+          borderRadius: 12, boxShadow: '0 8px 32px rgba(0,0,0,0.4)',
           display: 'flex', flexDirection: 'column', overflow: 'hidden',
         }}>
-          {/* Header */}
           <div style={{
-            padding: '10px 14px', borderBottom: '1px solid #374151',
+            padding: '10px 14px', borderBottom: `1px solid ${t.divider}`,
             display: 'flex', alignItems: 'center', justifyContent: 'space-between',
           }}>
-            <span style={{ color: '#fff', fontWeight: 700, fontSize: 14, fontFamily: 'sans-serif' }}>
+            <span style={{ color: t.text, fontWeight: 700, fontSize: 14, fontFamily: 'sans-serif' }}>
               Chat
             </span>
             <button onClick={handleClose} style={{
-              background: 'none', border: 'none', color: '#9ca3af',
+              background: 'none', border: 'none', color: t.textMuted,
               cursor: 'pointer', fontSize: 16, lineHeight: 1,
             }}>×</button>
           </div>
 
-          {/* Messages */}
           <div style={{
             flex: 1, overflowY: 'auto', padding: '10px 12px',
             display: 'flex', flexDirection: 'column', gap: 8,
           }}>
             {messages.length === 0 && (
               <div style={{
-                color: '#4b5563', fontSize: 13, fontFamily: 'sans-serif',
+                color: t.textMuted, fontSize: 13, fontFamily: 'sans-serif',
                 textAlign: 'center', marginTop: 40,
               }}>
                 No messages yet. Say hi! 👋
@@ -106,20 +104,17 @@ export default function Chat({ messages, myClientId: _myClientId, displayName: _
             {messages.map(m => (
               <div key={m.id} style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
                 <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
-                  <span style={{
-                    color: m.color, fontSize: 12, fontWeight: 700,
-                    fontFamily: 'sans-serif',
-                  }}>
+                  <span style={{ color: m.color, fontSize: 12, fontWeight: 700, fontFamily: 'sans-serif' }}>
                     {m.name}
                   </span>
-                  <span style={{ color: '#4b5563', fontSize: 10, fontFamily: 'monospace' }}>
+                  <span style={{ color: t.textMuted, fontSize: 10, fontFamily: 'monospace' }}>
                     {formatTime(m.ts)}
                   </span>
                 </div>
                 <div style={{
-                  color: '#d1d5db', fontSize: 13, fontFamily: 'sans-serif',
+                  color: t.text, fontSize: 13, fontFamily: 'sans-serif',
                   lineHeight: 1.4, wordBreak: 'break-word',
-                  background: '#2d2d3f', borderRadius: 8,
+                  background: t.inputBg, borderRadius: 8,
                   padding: '6px 10px',
                 }}>
                   {m.text}
@@ -129,9 +124,8 @@ export default function Chat({ messages, myClientId: _myClientId, displayName: _
             <div ref={bottomRef} />
           </div>
 
-          {/* Input */}
           <div style={{
-            padding: '8px 10px', borderTop: '1px solid #374151',
+            padding: '8px 10px', borderTop: `1px solid ${t.divider}`,
             display: 'flex', gap: 6,
           }}>
             <input
@@ -140,9 +134,9 @@ export default function Chat({ messages, myClientId: _myClientId, displayName: _
               onKeyDown={e => e.key === 'Enter' && !e.shiftKey && submit()}
               placeholder="Message…"
               style={{
-                flex: 1, background: '#2d2d3f',
-                border: '1px solid #374151', borderRadius: 8,
-                padding: '7px 10px', color: '#fff',
+                flex: 1, background: t.inputBg,
+                border: `1px solid ${t.panelBorder}`, borderRadius: 8,
+                padding: '7px 10px', color: t.text,
                 fontSize: 13, fontFamily: 'sans-serif', outline: 'none',
               }}
             />
@@ -150,9 +144,10 @@ export default function Chat({ messages, myClientId: _myClientId, displayName: _
               onClick={submit}
               disabled={!input.trim()}
               style={{
-                background: input.trim() ? '#6366f1' : '#374151',
+                background: input.trim() ? t.accent : t.btnDefault,
                 border: 'none', borderRadius: 8, padding: '7px 12px',
-                color: '#fff', cursor: input.trim() ? 'pointer' : 'default',
+                color: input.trim() ? '#fff' : t.textMuted,
+                cursor: input.trim() ? 'pointer' : 'default',
                 fontSize: 14,
               }}
             >

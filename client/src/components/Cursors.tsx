@@ -10,6 +10,7 @@ interface Props {
   myClientId: number;
   offsetX?: number;
   offsetY?: number;
+  scale?: number;
 }
 
 const COLORS = ['#f97316','#eab308','#22c55e','#06b6d4','#8b5cf6','#ec4899','#ef4444'];
@@ -18,16 +19,19 @@ export function colorForId(id: number): string {
   return COLORS[id % COLORS.length];
 }
 
-export default function Cursors({ cursors, myClientId, offsetX = 0, offsetY = 0 }: Props) {
+export default function Cursors({ cursors, myClientId, offsetX = 0, offsetY = 0, scale = 1 }: Props) {
   return (
     <div style={{ position: 'fixed', inset: 0, pointerEvents: 'none', zIndex: 50 }}>
       {Array.from(cursors.entries()).map(([id, state]) => {
         if (id === myClientId) return null;
+        // cursor coords are world coords; convert to screen
+        const screenX = state.x * scale + offsetX;
+        const screenY = state.y * scale + offsetY;
         return (
           <div key={id} style={{
             position: 'absolute',
-            left: state.x + offsetX,
-            top: state.y + offsetY,
+            left: screenX,
+            top: screenY,
             transform: 'translate(8px, 8px)',
             display: 'flex',
             alignItems: 'center',
