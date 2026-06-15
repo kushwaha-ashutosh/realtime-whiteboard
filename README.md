@@ -66,11 +66,3 @@ Node server (Express + ws)
 
 The Yjs document is the single source of truth. The canvas renders from `Y.Map<shapes>` — nothing is stored in React state or the DOM.
 
-## Deploy
-
-Dockerfile is included. Deploy to Railway, Fly.io, or Render:
-
-1. Push this repo to GitHub
-2. Create a new service → "Deploy from GitHub repo"
-3. Set env var: `DATABASE_URL`
-4. Enable "Always On" (Railway: paid tier; Render: paid Starter) to prevent cold starts
